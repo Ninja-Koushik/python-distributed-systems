@@ -10,6 +10,9 @@ service JobQueue {
 
   // A simple RPC for a worker to send a result back
   rpc SendResult (JobResult) returns (Ack) {}
+
+  // New RPC for a worker to send a heartbeat to the master
+  rpc Heartbeat (WorkerInfo) returns (Ack) {}
 }
 
 // The message format for a job request
