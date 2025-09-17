@@ -16,7 +16,7 @@ Welcome to **Ninja-Nucleus**, a showcase of a robust and resilient distributed s
 
 ### The Architecture: How It Works
 
-Project Nucleus operates on a simple yet powerful master-worker architecture. The master node is the brain, managing a persistent job queue and a fleet of workers. Workers act as the muscle, requesting jobs from the master, performing the work, and returning the results.
+Ninja-Nucleus operates on a simple yet powerful master-worker architecture. The master node is the brain, managing a persistent job queue and a fleet of workers. Workers act as the muscle, requesting jobs from the master, performing the work, and returning the results.
 
 1.  **Client:** The client submits a new job to the master using the `SendJob` RPC.
 2.  **Master:** The master adds the job to its persistent queue, ready for dispatch.
