@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+// Define the service for the master to serve
+service JobQueue {
+  // A simple RPC to send a job request
+  rpc SendJob (JobRequest) returns (JobReply) {}
+
+  // A streaming RPC for a worker to get a stream of jobs
+  rpc GetJobs (WorkerInfo) returns (stream JobRequest) {}
+
+  // A simple RPC for a worker to send a result back
+  rpc SendResult (JobResult) returns (Ack) {}
+}
+
+// The message format for a job request
+message JobRequest {
+  string job_id = 1;
+  string job_type = 2;
+  int32 payload = 3;
+}
+
+// The message format for a master's reply
+message JobReply {
+  string message = 1;
+}
+
+// The message format for a worker's result
+message JobResult {
+  string job_id = 1;
+  string worker_id = 2;
+  string result = 3;
+}
+
+// The message format for worker information
+message WorkerInfo {
+  string worker_id = 1;
+}
+
+// A simple acknowledgement message
+message Ack {
+  bool success = 1;
+}
