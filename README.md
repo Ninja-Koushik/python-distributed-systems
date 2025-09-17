@@ -1,6 +1,6 @@
-# Project Nucleus: An Enterprise-Grade, Fault-Tolerant Distributed Job Queue
+# Ninja-Nucleus: A Fault-Tolerant Distributed Job Queue
 
-Welcome to **Project Nucleus**, a showcase of a robust and resilient distributed system built to handle mission-critical tasks. This project is a testament to the power of modern software engineering principles, demonstrating how to build a scalable and reliable system from the ground up.
+Welcome to **Ninja-Nucleus**, a showcase of a robust and resilient distributed system built to handle mission-critical tasks. This project is a testament to the power of modern software engineering principles, demonstrating how to build a scalable and reliable system from the ground up.
 
 -----
 
