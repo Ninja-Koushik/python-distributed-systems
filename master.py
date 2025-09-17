@@ -15,6 +15,7 @@ import os
 import sys
 import threading
 import queue
+import logging
 
 # Import the generated gRPC files for communication
 import job_queue_pb2
@@ -60,12 +61,12 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
             ]
             with open(JOBS_FILE, 'w') as f:
                 json.dump(jobs_data, f, indent=4)
-            print(f"Job queue saved to {JOBS_FILE}.")
+            logging.info(f"Job queue saved to {JOBS_FILE}.")
 
     def load_jobs(self):
         """Loads the job queue from a JSON file if it exists, otherwise creates a new one."""
         if os.path.exists(JOBS_FILE):
-            print(f"Loading jobs from {JOBS_FILE}...")
+            logging.info(f"Loading jobs from {JOBS_FILE}...")
             with open(JOBS_FILE, 'r') as f:
                 jobs_data = json.load(f)
             for job_data in jobs_data:
@@ -76,7 +77,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
                 )
                 self.jobs.put(job)
         else:
-            print("No existing job file found. Creating a new job queue...")
+            logging.info("No existing job file found. Creating a new job queue...")
             for i in range(100):
                 job = job_queue_pb2.JobRequest(
                     job_id=f"job_{i}", 
@@ -101,7 +102,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
         worker_id = request.worker_id
         with self.lock:
             self.workers_last_heartbeat[worker_id] = time.time()
-        print(f"Worker {worker_id} connected and requesting jobs.")
+        logging.info(f"Worker {worker_id} connected and requesting jobs.")
 
         while True:
             try:
@@ -115,7 +116,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
                 time.sleep(0.5)
             except queue.Empty:
                 if not self.jobs_in_progress:
-                    print(f"Master has no more jobs for worker {worker_id}.")
+                    logging.info(f"Master has no more jobs for worker {worker_id}.")
                     break
                 # If the queue is empty, wait for a new job or a dead worker check
                 time.sleep(1)
@@ -127,7 +128,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
         """
         [RPC] Receives the result of a completed job from a worker.
         """
-        print(f"Received result for job {request.job_id} from worker {request.worker_id}: {request.result}")
+        logging.info(f"Received result for job {request.job_id} from worker {request.worker_id}: {request.result}")
         with self.lock:
             self.job_results[request.job_id] = request.result
             self.jobs_in_progress.pop(request.job_id, None)
@@ -140,7 +141,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
         """
         self.jobs.put(request)
         self.save_jobs()
-        print(f"New job {request.job_id} added to the queue.")
+        logging.info(f"New job {request.job_id} added to the queue.")
         return job_queue_pb2.JobReply(message=f"Job {request.job_id} received.")
 
     def check_dead_workers(self):
@@ -151,7 +152,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
                 # Re-queue jobs from workers who have timed out
                 for worker_id, last_heartbeat in self.workers_last_heartbeat.items():
                     if time.time() - last_heartbeat > HEARTBEAT_TIMEOUT:
-                        print(f"Worker {worker_id} timed out. Re-queuing its jobs.")
+                        logging.info(f"Worker {worker_id} timed out. Re-queuing its jobs.")
                         dead_workers.append(worker_id)
             
             for worker_id in dead_workers:
@@ -164,7 +165,7 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
                 ]
                 
                 for job in jobs_to_requeue:
-                    print(f"Re-queuing job {job.job_id}.")
+                    logging.info(f"Re-queuing job {job.job_id}.")
                     self.jobs.put(job)
                     with self.lock:
                         self.jobs_in_progress.pop(job.job_id)
@@ -181,7 +182,7 @@ def serve():
     )
     server.add_insecure_port('[::]:50051')
     server.start()
-    print("Master server started on port 50051.")
+    logging.info("Master server started on port 50051.")
     
     # Start the background thread for checking worker health
     heartbeat_checker_thread = threading.Thread(target=servicer.check_dead_workers, daemon=True)
