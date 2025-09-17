@@ -1,5 +1,5 @@
 digraph G {
-    graph [rankdir=LR, labelloc="t", label="Project Nucleus: System Architecture", fontname="Helvetica"];
+    graph [rankdir=LR, labelloc="t", label="Ninja Nucleus: System Architecture", fontname="Helvetica"];
     node [fontname="Helvetica", shape=box, style=filled];
     edge [fontname="Helvetica"];
 
