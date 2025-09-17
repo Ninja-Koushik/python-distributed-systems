@@ -7,6 +7,7 @@ in a distributed job queue system.
 import grpc
 import sys
 import uuid
+import logging
 
 # Import the generated gRPC files
 import job_queue_pb2
@@ -33,18 +34,18 @@ def run_client(job_id, job_type, payload):
             payload=payload
         )
         
-        print(f"Submitting job: ID={job_id}, Type={job_type}, Payload={payload}")
+        logging.info(f"Submitting job: ID={job_id}, Type={job_type}, Payload={payload}")
         try:
             # Call the SendJob RPC method on the master
             response = stub.SendJob(job_request)
-            print(f"Master's response: {response.message}")
+            logging.info(f"Master's response: {response.message}")
         except grpc.RpcError as e:
-            print(f"Could not connect to master: {e}")
+            logging.info(f"Could not connect to master: {e}")
 
 if __name__ == '__main__':
     # Check if command-line arguments are provided
     if len(sys.argv) < 3:
-        print("Usage: python3 client.py <job_type> <payload>")
+        logging.info("Usage: python3 client.py <job_type> <payload>")
         sys.exit(1)
 
     # Generate a unique job ID
