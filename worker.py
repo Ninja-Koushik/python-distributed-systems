@@ -10,6 +10,7 @@ import sys
 import uuid
 import threading
 import time
+import logging
 
 # Import the generated gRPC files for communication
 import job_queue_pb2
@@ -37,7 +38,7 @@ def send_heartbeats(stub, worker_id):
         try:
             stub.Heartbeat(job_queue_pb2.WorkerInfo(worker_id=worker_id))
         except grpc.RpcError as e:
-            print(f"Heartbeat failed: {e}. Master may be down. Exiting.")
+            logging.info(f"Heartbeat failed: {e}. Master may be down. Exiting.")
             sys.exit(1)
         time.sleep(heartbeat_interval)
 
@@ -57,10 +58,10 @@ def run_worker(worker_id):
 
         try:
             jobs_stream = stub.GetJobs(job_queue_pb2.WorkerInfo(worker_id=worker_id))
-            print(f"Worker {worker_id} connected to master, requesting jobs...")
+            logging.info(f"Worker {worker_id} connected to master, requesting jobs...")
 
             for job in jobs_stream:
-                print(f"Worker {worker_id} processing job {job.job_id} (Type: {job.job_type}, Payload: {job.payload})...")
+                logging.info(f"Worker {worker_id} processing job {job.job_id} (Type: {job.job_type}, Payload: {job.payload})...")
                 
                 result = None
                 if job.job_type == "fibonacci":
@@ -68,7 +69,7 @@ def run_worker(worker_id):
                 else:
                     result = "Unknown job type"
                 
-                print(f"Job {job.job_id} completed with result: {result}")
+                logging.info(f"Job {job.job_id} completed with result: {result}")
                 
                 response = stub.SendResult(job_queue_pb2.JobResult(
                     job_id=job.job_id,
@@ -76,10 +77,10 @@ def run_worker(worker_id):
                     result=str(result)
                 ))
                 if response.success:
-                    print(f"Result for job {job.job_id} sent successfully.")
+                    logging.info(f"Result for job {job.job_id} sent successfully.")
                 
         except grpc.RpcError as e:
-            print(f"Worker {worker_id} disconnected: {e}. Master may have crashed or shut down.")
+            logging.info(f"Worker {worker_id} disconnected: {e}. Master may have crashed or shut down.")
             # The heartbeat thread will catch this and exit the process.
 
 if __name__ == '__main__':
