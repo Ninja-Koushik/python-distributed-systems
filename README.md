@@ -20,6 +20,7 @@ Ninja-Nucleus operates on a simple yet powerful master-worker architecture. The 
 
 <img width="847" height="567" alt="architecture" src="https://github.com/user-attachments/assets/8ee78291-12f9-4720-94cf-823b51816a68" />
 
+
 1.  **Client:** The client submits a new job to the master using the `SendJob` RPC.
 2.  **Master:** The master adds the job to its persistent queue, ready for dispatch.
 3.  **Workers:** Workers continuously check in with the master via heartbeats and request new jobs.
