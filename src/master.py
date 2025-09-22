@@ -8,6 +8,8 @@ version features enhanced fault tolerance and state management.
 - It includes a new RPC endpoint to allow clients to poll for job status.
 - The worker health check logic is more precise, correctly re-queuing only
   jobs assigned to failed workers.
+- A new RPC, GetAllJobs, is added to serve the web dashboard with a complete
+  list of all jobs and their statuses.
 """
 
 import sys
@@ -288,6 +290,37 @@ class JobQueueServicer(job_queue_pb2_grpc.JobQueueServicer):
                 status_message=status_message,
                 result=result
             )
+            
+    def GetAllJobs(self, request, context) -> job_queue_pb2.AllJobsReply:
+        """
+        [RPC] Returns the current status of all jobs as a JSON string.
+
+        This RPC is designed specifically to serve the web dashboard, providing a
+        complete, thread-safe snapshot of the job queue state.
+
+        Args:
+            request (job_queue_pb2.Empty): An empty message.
+            context (grpc.ServicerContext): The context for the RPC.
+
+        Returns:
+            job_queue_pb2.AllJobsReply: A reply containing the jobs as a JSON string.
+        """
+        jobs_dict = {}
+        with self.lock:
+            # We convert the internal job state into a dictionary for serialization
+            for job_id, state_info in self.job_states.items():
+                jobs_dict[job_id] = {
+                    "job_id": job_id,
+                    "job_type": state_info["job"].job_type,
+                    "payload": state_info["job"].payload,
+                    "status": job_queue_pb2.JobStatusReply.Status.Name(state_info["status"]),
+                    "result": state_info.get("result", "")
+                }
+        
+        # Serialize the entire dictionary to a JSON string
+        jobs_json = json.dumps(jobs_dict)
+        return job_queue_pb2.AllJobsReply(jobs_json=jobs_json)
+
 
     def check_dead_workers_loop(self) -> None:
         """
