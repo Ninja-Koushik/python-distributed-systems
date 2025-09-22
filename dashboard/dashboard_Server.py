@@ -46,7 +46,7 @@ def serve_dashboard():
     # The dashboard.html file must be in the same directory as this script.
     return send_file('dashboard.html')
 
-@app.route('/submit_job', methods=['POST')
+@app.route('/submit_job', methods=['POST'])
 def submit_job():
     """
     Handles a POST request to submit a new job.
