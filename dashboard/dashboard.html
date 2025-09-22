@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Distributed Job Queue Dashboard</title>
+    <!-- Use Tailwind CSS for rapid styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 1000px;
+        }
+        .job-card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div class="container mx-auto p-8 rounded-xl shadow-2xl bg-white">
+        <!-- Dashboard Header -->
+        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Distributed Job Queue Dashboard</h1>
+        <p class="text-center text-gray-500 mb-8">Submit jobs and monitor their status in real time.</p>
+
+        <!-- Job Submission Form -->
+        <div class="job-card p-6 mb-8 border border-gray-200">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Submit a New Job</h2>
+            <form id="jobForm" class="flex flex-col md:flex-row gap-4 items-end">
+                <div class="flex-1 w-full">
+                    <label for="job_type" class="block text-sm font-medium text-gray-600 mb-1">Job Type</label>
+                    <select id="job_type" name="job_type" class="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2">
+                        <option value="fibonacci">Fibonacci</option>
+                    </select>
+                </div>
+                <div class="flex-1 w-full">
+                    <label for="payload" class="block text-sm font-medium text-gray-600 mb-1">Payload (Integer)</label>
+                    <input type="number" id="payload" name="payload" required class="w-full border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" placeholder="e.g., 35">
+                </div>
+                <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-200">
+                    Submit Job
+                </button>
+            </form>
+            <div id="statusMessage" class="mt-4 text-center"></div>
+        </div>
+
+        <!-- Live Job Status Table -->
+        <div class="job-card p-6 border border-gray-200">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">Live Job Status</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Job ID</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payload</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Result</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobsTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Job rows will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <p id="noJobsMessage" class="mt-4 text-center text-gray-500">No jobs submitted yet.</p>
+        </div>
+    </div>
+
+    <script>
+        // Set the polling interval to update the job table (in milliseconds)
+        const POLLING_INTERVAL = 2000;
+
+        // --- DOM Elements ---
+        const jobForm = document.getElementById('jobForm');
+        const statusMessage = document.getElementById('statusMessage');
+        const jobsTableBody = document.getElementById('jobsTableBody');
+        const noJobsMessage = document.getElementById('noJobsMessage');
+
+        // --- Functions ---
+        
+        /**
+         * Renders a message to the status area.
+         * @param {string} message The message to display.
+         * @param {string} type The type of message ('success', 'error', 'info').
+         */
+        function renderMessage(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = 'mt-4 font-semibold ' +
+                (type === 'success' ? 'text-green-600' :
+                 type === 'error' ? 'text-red-600' : 'text-gray-600');
+        }
+
+        /**
+         * Fetches all jobs from the server and updates the table.
+         */
+        async function fetchJobsAndRender() {
+            try {
+                const response = await fetch('/get_jobs');
+                const data = await response.json();
+                
+                if (data.error) {
+                    renderMessage(data.error, 'error');
+                    jobsTableBody.innerHTML = '';
+                    noJobsMessage.classList.remove('hidden');
+                    return;
+                }
+
+                // Clear the table and render jobs
+                jobsTableBody.innerHTML = '';
+                if (Object.keys(data).length === 0) {
+                    noJobsMessage.classList.remove('hidden');
+                } else {
+                    noJobsMessage.classList.add('hidden');
+                    for (const jobId in data) {
+                        const job = data[jobId];
+                        const row = document.createElement('tr');
+                        row.className = 'hover:bg-gray-50 transition-colors duration-150';
+                        
+                        let statusColor = 'text-gray-500';
+                        if (job.status === 'COMPLETED') {
+                            statusColor = 'text-green-600 font-bold';
+                        } else if (job.status === 'FAILED') {
+                            statusColor = 'text-red-600 font-bold';
+                        } else if (job.status === 'DISPATCHED') {
+                            statusColor = 'text-blue-500';
+                        }
+                        
+                        row.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${job.job_id}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${job.job_type}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${job.payload}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm ${statusColor}">${job.status}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${job.result || '...'}</td>
+                        `;
+                        jobsTableBody.appendChild(row);
+                    }
+                }
+            } catch (error) {
+                renderMessage('Failed to fetch job statuses. Is the dashboard server running?', 'error');
+                console.error('Error fetching jobs:', error);
+            }
+        }
+
+        /**
+         * Submits the form data to the server.
+         * @param {Event} event The form submission event.
+         */
+        async function handleSubmit(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(jobForm);
+            
+            try {
+                renderMessage('Submitting job...', 'info');
+                const response = await fetch('/submit_job', {
+                    method: 'POST',
+                    body: formData,
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    renderMessage(`Job submitted successfully: ${result.job_id}`, 'success');
+                } else {
+                    renderMessage(`Error: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                renderMessage('Failed to connect to the dashboard server.', 'error');
+                console.error('Submission failed:', error);
+            }
+        }
+
+        // --- Event Listeners and Initial Setup ---
+        jobForm.addEventListener('submit', handleSubmit);
+        
+        // Start polling for job updates
+        setInterval(fetchJobsAndRender, POLLING_INTERVAL);
+        
+        // Fetch jobs on initial load
+        fetchJobsAndRender();
+
+    </script>
+</body>
+</html>
