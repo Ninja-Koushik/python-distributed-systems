@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed Job Queue Dashboard</title>
+    <title>Ninja Nucleus Dashboard</title>
     <!-- Use Tailwind CSS for rapid styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -101,7 +101,15 @@
          */
         async function fetchJobsAndRender() {
             try {
-                const response = await fetch('/get_jobs');
+                // Use the absolute URL with window.location.origin for robustness
+                const response = await fetch(window.location.origin + '/get_jobs');
+                
+                // Add an explicit check for the response content type
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Expected JSON response but received a different content type. Is the dashboard server running?");
+                }
+
                 const data = await response.json();
                 
                 if (data.error) {
@@ -158,11 +166,18 @@
             
             try {
                 renderMessage('Submitting job...', 'info');
-                const response = await fetch('/submit_job', {
+                // Use the absolute URL with window.location.origin for robustness
+                const response = await fetch(window.location.origin + '/submit_job', {
                     method: 'POST',
                     body: formData,
                 });
                 
+                // Add an explicit check for the response content type
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("Expected JSON response but received a different content type. The dashboard server may not be running.");
+                }
+
                 const result = await response.json();
                 
                 if (result.success) {
