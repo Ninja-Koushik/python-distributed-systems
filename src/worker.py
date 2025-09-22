@@ -2,32 +2,34 @@
 Worker.py
 
 Description:
-This script acts as a worker node in a distributed job queue system. It connects to a
-master node via gRPC to receive, process, and return job results. The worker
-continuously polls the master for new tasks and sends periodic heartbeats to signal
-that it is alive and available. This design ensures that the master can detect
-unresponsive workers and re-queue their jobs for a new worker to handle.
+This script acts as a worker node in a distributed job queue system. Its primary
+functions are to:
+1. Continuously request jobs from the master node.
+2. Send periodic heartbeats to the master to signal that it is alive.
+3. Execute the received jobs based on their type.
+4. Report the job's result back to the master.
+
+This version is more fault-tolerant, with a dedicated heartbeat thread and robust
+error handling for network failures.
 """
 
+import grpc
 import sys
 import uuid
-import threading
-import time
 import logging
-from typing import NoReturn
-import signal
+import time
+import threading
+from typing import Dict, Any, Callable
 
-import grpc
-
-# Import the generated gRPC files
+# Import the generated gRPC files for communication with the master
 import job_queue_pb2
 import job_queue_pb2_grpc
 
 # --- Configuration ---
 MASTER_HOST = 'localhost'
 MASTER_PORT = 50051
-HEARTBEAT_INTERVAL = 5  # seconds
-SHUTDOWN_TIMEOUT = 5    # seconds to wait for graceful shutdown
+HEARTBEAT_INTERVAL = 3  # Time in seconds between heartbeats
+CONNECTION_RETRY_INTERVAL = 5 # Time to wait before attempting to reconnect
 
 # Configure logging
 logging.basicConfig(
@@ -37,154 +39,157 @@ logging.basicConfig(
 
 def fibonacci(n: int) -> int:
     """
-    Calculates the nth Fibonacci number. This function simulates a compute-bound task.
+    Computes the nth Fibonacci number.
 
+    This is an example of a CPU-bound task that a worker would execute.
+    
     Args:
-        n (int): The number for which to calculate the Fibonacci value.
-
+        n (int): The integer payload.
+    
     Returns:
         int: The nth Fibonacci number.
     """
     if n <= 1:
         return n
+    
     a, b = 0, 1
     for _ in range(2, n + 1):
         a, b = b, a + b
     return b
 
-def _process_job(job: job_queue_pb2.JobRequest) -> str:
+class JobExecutor:
     """
-    Processes a received job based on its type.
+    Manages the lifecycle of a worker node.
 
-    Args:
-        job (job_queue_pb2.JobRequest): The job to be processed.
-
-    Returns:
-        str: The result of the job as a string.
+    This class handles the core logic of connecting to the master, sending
+    heartbeats, fetching and processing jobs, and reporting results.
     """
-    logging.info(
-        f"Processing job '{job.job_id}' (Type: '{job.job_type}', Payload: '{job.payload}')..."
-    )
-    
-    result = None
-    if job.job_type == "fibonacci":
-        try:
-            result = fibonacci(job.payload)
-        except RecursionError as e:
-            logging.error(f"Fibonacci calculation for payload '{job.payload}' failed: {e}")
-            result = "Error: Recursion depth exceeded"
-        except Exception as e:
-            logging.error(f"An unexpected error occurred during job processing: {e}")
-            result = "Error: An unexpected error occurred"
-    else:
-        logging.warning(f"Unknown job type '{job.job_type}' for job '{job.job_id}'.")
-        result = "Error: Unknown job type"
+
+    def __init__(self, master_address: str):
+        """
+        Initializes the JobExecutor with a unique worker ID and a gRPC channel.
+
+        Args:
+            master_address (str): The address of the master node (e.g., 'localhost:50051').
+        """
+        self.worker_id = f"worker_{uuid.uuid4()}"
+        self.master_address = master_address
+        self.channel = None
+        self.stub = None
+        self.is_running = True
         
-    logging.info(f"Job '{job.job_id}' completed with result: '{result}'.")
-    return str(result)
+        # A dictionary mapping job types to their corresponding execution functions
+        self.job_handlers: Dict[str, Callable] = {
+            "fibonacci": fibonacci,
+            # Add more job types and handlers here
+        }
 
-def _send_heartbeats(stub: job_queue_pb2_grpc.JobQueueStub, worker_id: str, stop_event: threading.Event) -> None:
-    """
-    A background thread to send periodic heartbeats to the master.
+    def _send_heartbeat(self) -> None:
+        """
+        A dedicated thread method to send heartbeats to the master.
 
-    Args:
-        stub (job_queue_pb2_grpc.JobQueueStub): The gRPC stub for communication.
-        worker_id (str): The unique ID for this worker.
-        stop_event (threading.Event): An event to signal the thread to stop.
-    """
-    while not stop_event.is_set():
+        This function runs in a separate daemon thread to ensure the master
+        knows the worker is still active, even if it is busy processing a job.
+        """
+        while self.is_running:
+            try:
+                # Use a new channel for each heartbeat to ensure connection validity
+                with grpc.insecure_channel(self.master_address) as channel:
+                    stub = job_queue_pb2_grpc.JobQueueStub(channel)
+                    stub.Heartbeat(job_queue_pb2.WorkerInfo(worker_id=self.worker_id))
+                logging.debug(f"Heartbeat sent by '{self.worker_id}'.")
+            except grpc.RpcError as e:
+                logging.warning(
+                    f"Heartbeat failed: {e.details()}. Master may be temporarily unavailable."
+                )
+            except Exception as e:
+                logging.error(f"An unexpected error occurred in heartbeat loop: {e}")
+            
+            time.sleep(HEARTBEAT_INTERVAL)
+
+    def _process_job(self, job: job_queue_pb2.JobRequest) -> job_queue_pb2.JobResult:
+        """
+        Executes a received job and returns the result.
+
+        Args:
+            job (job_queue_pb2.JobRequest): The job to be executed.
+        
+        Returns:
+            job_queue_pb2.JobResult: The result of the job execution, including
+                                      the success status and the output.
+        """
+        logging.info(
+            f"Processing job '{job.job_id}' of type '{job.job_type}' with payload: {job.payload}"
+        )
+        result = ""
+        success = False
         try:
-            stub.Heartbeat(job_queue_pb2.WorkerInfo(worker_id=worker_id))
-            # Wait for the next heartbeat interval or until the stop event is set.
-            stop_event.wait(HEARTBEAT_INTERVAL)
-        except grpc.RpcError as e:
-            logging.error(f"Heartbeat failed. Master may be down. Details: {e.details()}")
-            stop_event.set()  # Signal other threads to stop
-            sys.exit(1)
+            handler = self.job_handlers.get(job.job_type)
+            if handler:
+                result = str(handler(job.payload))
+                success = True
+                logging.info(f"Job '{job.job_id}' completed successfully. Result: {result}")
+            else:
+                result = "Unknown job type."
+                logging.error(f"Job '{job.job_id}' failed: Unknown job type '{job.job_type}'.")
         except Exception as e:
-            logging.critical(f"An unexpected error occurred in heartbeat thread: {e}")
-            stop_event.set()
-
-def run_worker(worker_id: str) -> None:
-    """
-    Establishes a connection to the master, starts the heartbeat thread,
-    and enters a loop to fetch and process jobs.
-
-    Args:
-        worker_id (str): A unique ID for this worker instance.
-    """
-    target_address = f"{MASTER_HOST}:{MASTER_PORT}"
-    logging.info(f"Worker '{worker_id}' starting and connecting to master at {target_address}...")
-    
-    stop_event = threading.Event()
-    
-    # Register a signal handler for graceful shutdown
-    def signal_handler(signum, frame):
-        logging.info("Shutdown signal received. Exiting gracefully...")
-        stop_event.set()
-    
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-    try:
-        with grpc.insecure_channel(target_address) as channel:
-            stub = job_queue_pb2_grpc.JobQueueStub(channel)
-
-            # Start the heartbeat thread. It's a daemon so it won't prevent the main process from exiting.
-            heartbeat_thread = threading.Thread(
-                target=_send_heartbeats,
-                args=(stub, worker_id, stop_event),
-                daemon=True,
-                name="HeartbeatThread"
+            result = f"Error processing job: {e}"
+            logging.error(f"Job '{job.job_id}' failed with an exception: {e}")
+        finally:
+            return job_queue_pb2.JobResult(
+                job_id=job.job_id,
+                worker_id=self.worker_id,
+                result=result,
+                success=success
             )
-            heartbeat_thread.start()
 
-            # The main loop for fetching and processing jobs
-            while not stop_event.is_set():
-                try:
-                    jobs_stream = stub.GetJobs(job_queue_pb2.WorkerInfo(worker_id=worker_id))
-                    for job in jobs_stream:
-                        if stop_event.is_set():
-                            break
-                        
-                        result = _process_job(job)
-                        
-                        response = stub.SendResult(job_queue_pb2.JobResult(
-                            job_id=job.job_id,
-                            worker_id=worker_id,
-                            result=str(result)
-                        ))
-                        if not response.success:
-                            logging.warning(f"Master failed to acknowledge result for job '{job.job_id}'.")
-                    
-                    # If the stream ends, it could be a graceful shutdown from the master.
-                    if not stop_event.is_set():
-                        logging.info("Master disconnected the job stream. Attempting to reconnect...")
-                        time.sleep(5)  # Wait before retrying
-                
-                except grpc.RpcError as e:
-                    if e.code() == grpc.StatusCode.UNAVAILABLE:
-                        logging.error(f"Could not connect to master. Is it running? Details: {e.details()}")
-                    else:
-                        logging.error(f"RPC error during job stream: {e.details()}")
-                    
-                    logging.info("Connection lost. Waiting for master to become available...")
-                    stop_event.wait(5)
-                except Exception as e:
-                    logging.critical(f"An unexpected error occurred in the main worker loop: {e}")
-                    stop_event.set()
+    def run(self) -> None:
+        """
+        The main method for the worker.
 
-    except grpc.FutureTimeoutError:
-        logging.error("Connection to master timed out.")
-        stop_event.set()
-    except Exception as e:
-        logging.critical(f"Worker startup failed: {e}")
-        stop_event.set()
-    finally:
-        logging.info("Worker shutting down...")
-        stop_event.set()
+        This method connects to the master and enters a loop to continuously
+        fetch, execute, and report on jobs.
+        """
+        logging.info(f"Starting worker '{self.worker_id}'.")
+
+        # Start the background heartbeat thread
+        heartbeat_thread = threading.Thread(
+            target=self._send_heartbeat,
+            daemon=True,
+            name="HeartbeatThread"
+        )
+        heartbeat_thread.start()
+
+        while self.is_running:
+            try:
+                # Use a context manager for the channel to ensure it closes properly
+                with grpc.insecure_channel(self.master_address) as channel:
+                    self.stub = job_queue_pb2_grpc.JobQueueStub(channel)
+                    logging.info("Connected to master. Requesting jobs...")
+                    
+                    # The GetJobs RPC streams jobs from the master
+                    for job in self.stub.GetJobs(job_queue_pb2.WorkerInfo(worker_id=self.worker_id)):
+                        job_result = self._process_job(job)
+                        self.stub.SendResult(job_result)
+                        
+            except grpc.RpcError as e:
+                logging.error(
+                    f"Connection to master lost: {e.details()}. Retrying in {CONNECTION_RETRY_INTERVAL} seconds..."
+                )
+                time.sleep(CONNECTION_RETRY_INTERVAL)
+            except KeyboardInterrupt:
+                logging.info("Shutting down worker gracefully...")
+                self.is_running = False
+            except Exception as e:
+                logging.critical(f"An unexpected error occurred: {e}. Shutting down.")
+                self.is_running = False
+        
+        logging.info("Worker process has stopped.")
 
 if __name__ == '__main__':
-    # Get worker ID from command line or generate a unique one
-    worker_id = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
-    run_worker(worker_id)
+    try:
+        executor = JobExecutor(f"{MASTER_HOST}:{MASTER_PORT}")
+        executor.run()
+    except Exception as e:
+        logging.critical(f"Failed to initialize worker: {e}")
+        sys.exit(1)
