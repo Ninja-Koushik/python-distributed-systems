@@ -1,45 +1,58 @@
 syntax = "proto3";
 
-// Define the service for the master to serve
+package job_queue;
+
+// A service defining the contract between the Master and its clients (Worker/Dashboard).
 service JobQueue {
-  // A simple RPC to send a job request
-  rpc SendJob (JobRequest) returns (JobReply) {}
+  // 1. Worker sends heartbeats to Master
+  rpc Heartbeat (WorkerInfo) returns (Empty);
 
-  // A streaming RPC for a worker to get a stream of jobs
-  rpc GetJobs (WorkerInfo) returns (stream JobRequest) {}
+  // 2. Worker requests jobs from Master (Server Streaming)
+  rpc GetJobs (WorkerInfo) returns (stream JobRequest);
 
-  // A simple RPC for a worker to send a result back
-  rpc SendResult (JobResult) returns (Ack) {}
+  // 3. Worker reports job result to Master
+  rpc SendResult (JobResult) returns (Ack);
 
-  // New RPC for a worker to send a heartbeat to the master
-  rpc Heartbeat (WorkerInfo) returns (Ack) {}
+  // 4. Dashboard/Client submits a new job to Master
+  rpc SendJob (JobRequest) returns (Ack);
+
+  // 5. Dashboard/Client requests all job statuses from Master
+  rpc GetAllJobs (Empty) returns (AllJobsResponse);
 }
 
-// The message format for a job request
-message JobRequest {
-  string job_id = 1;
-  string job_type = 2;
-  int32 payload = 3;
+// --- Message Definitions ---
+
+// Empty message for requests/responses that don't need a payload.
+// This is the message that was missing, causing the 'Empty' attribute error.
+message Empty {}
+
+// Acknowledgement message returned for successful/failed actions.
+message Ack {
+  bool success = 1;
+  string message = 2;
 }
 
-// The message format for a master's reply
-message JobReply {
-  string message = 1;
-}
-
-// The message format for a worker's result
-message JobResult {
-  string job_id = 1;
-  string worker_id = 2;
-  string result = 3;
-}
-
-// The message format for worker information
+// Information about a Worker used for heartbeats and job requests.
 message WorkerInfo {
   string worker_id = 1;
 }
 
-// A simple acknowledgement message
-message Ack {
-  bool success = 1;
+// Job structure used for client submission and queueing.
+message JobRequest {
+  string job_id = 1;
+  string job_type = 2;
+  int32 payload = 3; // e.g., the 'n' for fibonacci(n)
+}
+
+// Job structure for reporting results back to the Master.
+message JobResult {
+  string job_id = 1;
+  string worker_id = 2;
+  string result = 3;
+  bool success = 4;
+}
+
+// Response for the Dashboard's GetAllJobs RPC.
+message AllJobsResponse {
+  string jobs_json = 1; // A JSON string containing the status of all jobs.
 }
