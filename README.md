@@ -8,7 +8,7 @@ This system is designed to demonstrate key distributed computing patterns: Maste
 
 The architecture separates core job management (Master) from task execution (Worker) and status visibility (Monitoring/Dashboard).
 
-![][image1]
+![Ninja-Nucleus System Architecture](assets/architecture.png)
 
 | Component | Technology | Role | Communication |
 | :---- | :---- | :---- | :---- |
