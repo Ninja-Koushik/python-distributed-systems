@@ -8,7 +8,7 @@ This system is designed to demonstrate key distributed computing patterns: Maste
 
 The architecture separates core job management (Master) from task execution (Worker) and status visibility (Monitoring/Dashboard).
 
-![Ninja-Nucleus System Architecture](assets/architecture.png)
+![Ninja-Nucleus System Architecture](python-distributed-system/architecture.png)
 
 | Component | Technology | Role | Communication |
 | :---- | :---- | :---- | :---- |
