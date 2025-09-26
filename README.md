@@ -1,9 +1,3 @@
-Of course. I understand you want the complete, fully formatted content of the `README.md` file delivered immediately in this chat text block.
-
-Here is the entire document:
-
------
-
 # Ninja-Nucleus: A Scalable Distributed Job Processing System
 
 Ninja-Nucleus is a robust, scalable prototype for a distributed job queue and processing system. It leverages the performance of **gRPC** for efficient inter-service communication and implements a modern **Prometheus monitoring stack** for real-time observability and fault detection.
