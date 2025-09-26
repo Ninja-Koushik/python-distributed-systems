@@ -8,6 +8,8 @@ This system is designed to demonstrate key distributed computing patterns: Maste
 
 The architecture separates core job management (Master) from task execution (Worker) and status visibility (Monitoring/Dashboard).
 
+![Ninja Nucleus Architecture](architecture.png)
+
 | Component | Technology | Role | Communication |
 | :---- | :---- | :---- | :---- |
 | **Master Service** (`masterServer.py`) | gRPC Server (Python) | **Orchestration Hub.** Manages the central job queue, handles worker registration, and **pushes** job status metrics (QUEUED, COMPLETED, FAILED). | gRPC (Workers/Dashboard), **HTTP POST (Metrics)** |
@@ -145,6 +147,53 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:8001']
 ```
+
+-----
+
+## 🤝 Contributing
+
+We welcome contributions to Ninja-Nucleus\! To ensure a smooth process, please follow these guidelines:
+
+### Reporting Bugs
+
+If you find a bug, please open an issue with the following details:
+
+1.  A clear, descriptive title summarizing the problem.
+2.  Steps to reproduce the bug (including commands run and expected output).
+3.  Your environment details (Python version, OS, etc.).
+
+### Development Setup
+
+1.  Fork the repository.
+2.  Create your feature branch: `git checkout -b feature/amazing-new-feature`
+3.  Install development dependencies (if any).
+4.  Ensure all local services start correctly using the steps in **Running the System**.
+5.  Commit your changes following the conventional commit format (e.g., `feat: add exponential backoff to worker`).
+6.  Open a Pull Request with a clear summary of your changes.
+
+### Testing and Quality
+
+Before submitting a Pull Request, ensure all services start correctly and communication flows are maintained. Key quality checks:
+
+  * **Flow Check:** Job submission and result reporting are successful.
+  * **Metrics Check:** Verify heartbeats and job status metrics are correctly exposed on the Prometheus endpoint.
+  * **Code Style:** All Python code must adhere to PEP 8 guidelines.
+
+-----
+
+## ⚖️ License
+
+This project is licensed under the **MIT License**.
+
+A short summary of the license terms:
+
+  * **Permitted Use:** Commercial use, modification, distribution, and private use.
+  * **Conditions:** Must include the license and copyright notice with the software.
+  * **Limitations:** Liability and warranty are excluded.
+
+See the separate `LICENSE.md` file for the full text.
+
+-----
 
 ## 📦 Containerization and Deployment
 
